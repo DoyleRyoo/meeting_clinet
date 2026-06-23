@@ -32,7 +32,7 @@ export const useSummaryStore = create<SummaryState>((set) => ({
       await new Promise((resolve, reject) => {
         setTimeout(() => {
           // 테스트용 시나리오 조절: 실패 케이스를 보고 싶다면 true로 변경
-          const isMockFailure = true; 
+          const isMockFailure = false; 
           
           if (isMockFailure) {
             reject(new Error("AI 서버 과부하로 인해 요약에 실패했습니다."));

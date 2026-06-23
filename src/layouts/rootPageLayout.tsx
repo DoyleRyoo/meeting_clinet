@@ -1,11 +1,31 @@
+import { useState } from "react";
 import { ChevronDown, Folder, Plus } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useApp } from "../components/context/context";
+import { useAuthStore } from "../stores/authStore";
+import { ProfileEditModal } from "../components/auth/profileEditModal";
 
 export function RootPageLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { projects } = useApp();
+  const isAuthenticated = useAuthStore(
+    (state) => state.status === "authenticated",
+  );
+  const oauthUser = useAuthStore((state) => state.oauthUser);
+  const logout = useAuthStore((state) => state.logout);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    setIsProfileMenuOpen(false);
+  };
+
+  const handleProfileEditOpen = () => {
+    setIsProfileMenuOpen(false);
+    setIsProfileEditOpen(true);
+  };
 
   return (
     <div
@@ -16,20 +36,63 @@ export function RootPageLayout() {
     >
       <aside className="flex h-full w-[240px] shrink-0 select-none flex-col border-r border-border bg-white">
         <div className="border-b border-border px-4 py-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-400 text-sm font-semibold text-white">
-              진
+          {isAuthenticated ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsProfileMenuOpen((isOpen) => !isOpen)}
+                aria-expanded={isProfileMenuOpen}
+                className="flex w-full items-center gap-2.5 text-left"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-amber-400 text-sm font-semibold text-white">
+                  {oauthUser?.profileImage ? (
+                    <img
+                      src={oauthUser.profileImage}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    "진"
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{oauthUser?.name ?? "진상현"}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {oauthUser?.email ?? "test@gmail.com"}
+                  </p>
+                </div>
+                <span className="text-muted-foreground transition-colors hover:text-foreground">
+                  <ChevronDown size={14} />
+                </span>
+              </button>
+              {isProfileMenuOpen && (
+                <div className="absolute left-0 top-full z-10 mt-2 w-full rounded-lg border border-border bg-white p-1 shadow-lg transition-all">
+                  <button
+                    type="button"
+                    onClick={handleProfileEditOpen}
+                    className="w-full rounded-md px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                  >
+                    프로필
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full rounded-md px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">진상현</p>
-              <p className="truncate text-xs text-muted-foreground">
-                test@gmail.com
-              </p>
-            </div>
-            <button className="text-muted-foreground transition-colors hover:text-foreground">
-              <ChevronDown size={14} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="text-sm font-semibold text-foreground transition-colors hover:text-primary"
+            >
+              로그인하기
             </button>
-          </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between px-4 pb-1 pt-4">
@@ -85,6 +148,9 @@ export function RootPageLayout() {
       <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
+      {isProfileEditOpen && (
+        <ProfileEditModal onClose={() => setIsProfileEditOpen(false)} />
+      )}
     </div>
   );
 }

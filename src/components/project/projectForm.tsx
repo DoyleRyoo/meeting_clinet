@@ -7,7 +7,7 @@ import {
 } from "../context/context";
 
 interface ProjectFormData {
-  name: string;
+  title: string;
   participants: Participant[];
   notionUrl: string;
 }
@@ -18,7 +18,7 @@ interface ProjectFormProps {
   onCancel: () => void;
   submitLabel: string;
   cancelLabel: string;
-  title: string;
+  head: string;
 }
 
 export function ProjectForm({
@@ -27,9 +27,9 @@ export function ProjectForm({
   onCancel,
   submitLabel,
   cancelLabel,
-  title,
+  head,
 }: ProjectFormProps) {
-  const [name, setName] = useState(initial.name);
+  const [title, setTitle] = useState(initial.title);
   const [participants, setParticipants] = useState<Participant[]>(
     initial.participants,
   );
@@ -55,7 +55,7 @@ export function ProjectForm({
             {cancelLabel}
           </button>
           <button
-            onClick={() => onSubmit({ name, participants, notionUrl })}
+            onClick={() => onSubmit({ title, participants, notionUrl })}
             className="rounded-full bg-foreground px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-foreground/80"
           >
             {submitLabel}
@@ -70,8 +70,8 @@ export function ProjectForm({
               프로젝트 이름
             </label>
             <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
+              value={head}
+              onChange={(event) => setTitle(event.target.value)}
               placeholder="프로젝트 이름을 입력하세요"
               className="h-10 flex-1 rounded-lg border border-border bg-white px-3 text-sm outline-none transition-colors focus:border-primary"
             />

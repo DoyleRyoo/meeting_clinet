@@ -160,3 +160,5 @@ vite.config.ts.timestamp-*
 .vite/
 # Local build metadata
 .tmp/
+
+records/

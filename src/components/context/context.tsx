@@ -1,4 +1,5 @@
 import { createContext, useContext, useRef, useState } from "react";
+import { useAuthStore } from "../../stores/authStore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,17 +92,68 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue>(null!);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const isAuthenticated = useAuthStore(
+    (state) => state.status === "authenticated",
+  );
+  const oauthUser = useAuthStore((state) => state.oauthUser);
+  const projectOwnerKey = isAuthenticated ? oauthUser?.email ?? null : null;
+  const [anonymousProjects, setAnonymousProjects] = useState<Project[]>([]);
+  const [, setProjectRevision] = useState(0);
+  const projects = projectOwnerKey
+    ? getUserProjects(projectOwnerKey)
+    : anonymousProjects;
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
   const [summaryTab, setSummaryTab] = useState<"full" | "tasks">("full");
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const setProjects: React.Dispatch<React.SetStateAction<Project[]>> = (value) => {
+    const nextProjects =
+      typeof value === "function" ? value(projects) : value;
+
+    if (projectOwnerKey) {
+      saveUserProjects(projectOwnerKey, nextProjects);
+      setProjectRevision((revision) => revision + 1);
+    } else {
+      setAnonymousProjects(nextProjects);
+    }
+  };
 
   return (
     <AppContext.Provider value={{ projects, setProjects, tasks, setTasks, summaryTab, setSummaryTab, elapsed, setElapsed, timerRef }}>
       {children}
     </AppContext.Provider>
   );
+}
+
+// 실제 프로그램에서 사용하는 코드입니다.
+// 백엔드 프로젝트 API 연동 완료 후 주석을 해제하여 사용합니다.
+// const response = await apiClient.get("/projects/list");
+// const response = await apiClient.post("/projects/create", projectPayload);
+
+function getUserProjects(ownerKey: string): Project[] {
+  const storageKey = `projects:${ownerKey}`;
+  const storedProjects = localStorage.getItem(storageKey);
+  if (!storedProjects) return createInitialProjects();
+
+  try {
+    const parsedProjects: unknown = JSON.parse(storedProjects);
+    return Array.isArray(parsedProjects) ? (parsedProjects as Project[]) : [];
+  } catch {
+    return createInitialProjects();
+  }
+}
+
+function saveUserProjects(ownerKey: string, projects: Project[]): void {
+  localStorage.setItem(`projects:${ownerKey}`, JSON.stringify(projects));
+}
+
+function createInitialProjects(): Project[] {
+  return INITIAL_PROJECTS.map((project) => ({
+    ...project,
+    meetings: project.meetings.map((meeting) => ({ ...meeting })),
+    participants: project.participants.map((participant) => ({ ...participant })),
+  }));
 }
 
 export const useApp = () => useContext(AppContext);
