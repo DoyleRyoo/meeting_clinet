@@ -1,23 +1,16 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
 import { signup } from "../../apis/authApi";
+import { INITIAL_SIGNUP_FORM_VALUES } from "../context/context";
 import { useAuthStore } from "../../stores/authStore";
 import type { SignupFormValues } from "../../types/authTypes";
 
 type TextFieldName = Exclude<keyof SignupFormValues, "userProfileImage">;
 
-const initialValues: SignupFormValues = {
-  companyId: "",
-  userPosition: "",
-  userDepartment: "",
-  userEmployeeNumber: "",
-  userProfileImage: null,
-};
-
 export function SignupInfoModal() {
   const navigate = useNavigate();
   const { accessToken, closeSignupModal, isSignupModalOpen } = useAuthStore();
-  const [values, setValues] = useState<SignupFormValues>(initialValues);
+  const [values, setValues] = useState<SignupFormValues>(INITIAL_SIGNUP_FORM_VALUES);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange =

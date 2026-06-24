@@ -1,5 +1,6 @@
 import { createContext, useContext, useRef, useState } from "react";
 import { useAuthStore } from "../../stores/authStore";
+import type { OAuthUser, SignupFormValues } from "../../types/authTypes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,29 @@ export interface Participant {
   projectMemberRole?: string;
   projectMemberStatus?: ProjectParticipantStatus;
   projectMemberGrade?: string;
+}
+export interface Company {
+  companyId: string;
+  companyName: string;
+  companyDomain: string | null;
+  companyPhone: string | null;
+  companyCreatedAt: string;
+  companyUpdatedAt: string | null;
+  companyNotionWorkspace: string | null;
+}
+export interface User {
+  userId: string;
+  companyId: string;
+  userEmail: string;
+  userName: string;
+  userProfileImage: string | null;
+  userLastLogin: string | null;
+  userPhone: string | null;
+  userDepartment: string;
+  userRole: string;
+  userStatus: boolean;
+  userCreatedAt: string;
+  userUpdatedAt: string | null;
 }
 export interface ProjectParticipant extends Participant {
   projectMemberId: string;
@@ -98,15 +122,73 @@ export interface Project {
 }
 export interface Task { id: number; text: string; assignee: Participant; priority: "높음" | "중간" | "낮음"; done: boolean }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Mock data ────────────────────────────────────────────────────────────────
 
-export const PARTICIPANTS: Participant[] = [
-  { id: "1", title: "유도윤", initials: "유도", color: "#F59E0B" },
-  { id: "2", title: "이한선", initials: "이한", color: "#3B82F6" },
-  { id: "3", title: "김인영", initials: "김인", color: "#10B981" },
-  { id: "4", title: "박철현", initials: "박철", color: "#8B5CF6" },
-  { id: "5", title: "최지관", initials: "최지", color: "#EF4444" },
+// 테스트 코드입니다 추후 삭제되어야합니다
+// ===== 삭제 시작: ERD 기반 Mock 데이터 =====
+export const MOCK_COMPANIES: Company[] = [
+  { companyId: "company-1", companyName: "Damlok", companyDomain: "damlok.example.com", companyPhone: null, companyCreatedAt: "2026-05-01T09:00:00.000Z", companyUpdatedAt: null, companyNotionWorkspace: null },
 ];
+
+export const MOCK_USERS: User[] = [
+  { userId: "1", companyId: "company-1", userEmail: "doyoon@example.com", userName: "유도윤", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "제품개발팀", userRole: "프론트엔드 개발자", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+  { userId: "2", companyId: "company-1", userEmail: "hanseon@example.com", userName: "이한선", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "제품개발팀", userRole: "백엔드 개발자", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+  { userId: "3", companyId: "company-1", userEmail: "inyoung@example.com", userName: "김인영", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "AI연구팀", userRole: "AI 엔지니어", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+  { userId: "4", companyId: "company-1", userEmail: "cheolhyeon@example.com", userName: "박철현", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "기획팀", userRole: "프로덕트 매니저", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+  { userId: "5", companyId: "company-1", userEmail: "jigwan@example.com", userName: "최지관", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "디자인팀", userRole: "프로덕트 디자이너", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+  { userId: "6", companyId: "company-1", userEmail: "haneul@example.com", userName: "서하늘", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "제품개발팀", userRole: "프론트엔드 개발자", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+  { userId: "7", companyId: "company-1", userEmail: "minjun@example.com", userName: "정민준", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "AI연구팀", userRole: "ML 엔지니어", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+  { userId: "8", companyId: "company-1", userEmail: "seoyeon@example.com", userName: "윤서연", userProfileImage: null, userLastLogin: null, userPhone: null, userDepartment: "디자인팀", userRole: "UX 디자이너", userStatus: true, userCreatedAt: "2026-05-01T09:00:00.000Z", userUpdatedAt: null },
+];
+
+const participantColors = ["#F59E0B", "#3B82F6", "#10B981", "#8B5CF6", "#EF4444", "#EC4899", "#06B6D4", "#84CC16"];
+export const PARTICIPANTS: Participant[] = MOCK_USERS.map((user, index) => ({
+  id: user.userId,
+  title: user.userName,
+  initials: user.userName.slice(0, 2),
+  color: participantColors[index % participantColors.length],
+  email: user.userEmail,
+  profileImage: user.userProfileImage,
+}));
+
+export const MOCK_OAUTH_USER: OAuthUser = {
+  email: MOCK_USERS[0].userEmail,
+  name: MOCK_USERS[0].userName,
+  profileImage: MOCK_USERS[0].userProfileImage,
+  companyId: MOCK_USERS[0].companyId,
+  userPosition: MOCK_USERS[0].userRole,
+  userDepartment: MOCK_USERS[0].userDepartment,
+  userEmployeeNumber: "1001",
+};
+
+export const INITIAL_SIGNUP_FORM_VALUES: SignupFormValues = {
+  companyId: "",
+  userPosition: "",
+  userDepartment: "",
+  userEmployeeNumber: "",
+  userProfileImage: null,
+};
+
+export const MOCK_AI_SUMMARY = {
+  title: "팀 프로젝트 회의록 요약본",
+  content:
+    "입력된 내용에 대한 요약입니다.\nZustand 스토어 기반으로 비동기 처리가 완벽히 제어되고 있습니다.",
+  keywords: ["Zustand", "React", "State Management"],
+};
+export const MOCK_AI_SUMMARY_DELAY_MS = 3000;
+export const MOCK_AI_SUMMARY_FAILURE = false;
+
+export function createMockAiSummary(inputText: string) {
+  return {
+    ...MOCK_AI_SUMMARY,
+    content: `입력된 내용(${inputText.slice(0, 10)}...)에 대한 AI 요약 결과입니다.\n1. 프로젝트 프론트엔드-백엔드 연동 구조 확립.\n2. Zustand를 활용한 상태 기반 라우팅 적용.`,
+  };
+}
+
+export function createMockMeetingTranscript(elapsedSeconds: number): string {
+  return `총 ${elapsedSeconds}초 동안 녹음된 회의 오디오 데이터 원본`;
+}
+// ===== 삭제 끝: ERD 기반 Mock 데이터 =====
 
 // 테스트 코드입니다 추후 삭제되어야합니다
 // ===== 삭제 시작: 프로젝트 참가자 상태 Mock 데이터 =====
@@ -288,14 +370,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
 // 테스트 코드입니다 추후 삭제되어야합니다
 // ===== 삭제 시작: 프로젝트 상세 조회 Mock 데이터 =====
-const MOCK_PROJECT_PARTICIPANT_USERS: Record<string, ProjectParticipantUser> = {
-  "1": { userId: "1", name: "유도윤", email: "doyoon@example.com", department: "제품개발팀", grade: "사원", position: "프론트엔드 개발자", profileImage: null, status: "ACTIVE" },
-  "2": { userId: "2", name: "이한선", email: "hanseon@example.com", department: "제품개발팀", grade: "대리", position: "백엔드 개발자", profileImage: null, status: "ACTIVE" },
-  "3": { userId: "3", name: "김인영", email: "inyoung@example.com", department: "AI연구팀", grade: "사원", position: "AI 엔지니어", profileImage: null, status: "ACTIVE" },
-  "4": { userId: "4", name: "박철현", email: "cheolhyeon@example.com", department: "기획팀", grade: "과장", position: "프로덕트 매니저", profileImage: null, status: "ACTIVE" },
-  "5": { userId: "5", name: "최지관", email: "jigwan@example.com", department: "디자인팀", grade: "사원", position: "프로덕트 디자이너", profileImage: null, status: "ACTIVE" },
-};
-
 export function getProjectDetail(
   projectId: string | number,
   projects: Project[],
@@ -335,20 +409,36 @@ export function getProjectDetail(
     status: project.projectStatus ?? "ACTIVE",
     createdAt: project.projectCreatedAt ?? "",
     updatedAt: project.projectUpdatedAt ?? null,
-    participants: participants.map((participant) => ({
-      ...participant,
-      user:
-        MOCK_PROJECT_PARTICIPANT_USERS[participant.userId] ?? {
-          userId: participant.userId,
-          name: participant.title,
-          email: participant.email ?? `${participant.userId}@example.com`,
-          department: "미지정",
-          grade: participant.projectMemberGrade,
-          position: "미지정",
-          profileImage: participant.profileImage ?? null,
-          status: participant.projectMemberStatus,
-        },
-    })),
+    participants: participants.map((participant) => {
+      const user = MOCK_USERS.find(
+        (mockUser) => mockUser.userId === participant.userId,
+      );
+
+      return {
+        ...participant,
+        user: user
+          ? {
+              userId: user.userId,
+              name: user.userName,
+              email: user.userEmail,
+              department: user.userDepartment,
+              grade: participant.projectMemberGrade,
+              position: user.userRole,
+              profileImage: user.userProfileImage,
+              status: user.userStatus ? "ACTIVE" : "INACTIVE",
+            }
+          : {
+              userId: participant.userId,
+              name: participant.title,
+              email: participant.email ?? `${participant.userId}@example.com`,
+              department: "미지정",
+              grade: participant.projectMemberGrade,
+              position: "미지정",
+              profileImage: participant.profileImage ?? null,
+              status: participant.projectMemberStatus,
+            },
+      };
+    }),
   };
 }
 // ===== 삭제 끝: 프로젝트 상세 조회 Mock 데이터 =====

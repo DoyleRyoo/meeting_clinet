@@ -5,6 +5,29 @@ import { useApp } from "../components/context/context";
 import { useAuthStore } from "../stores/authStore";
 import { ProfileEditModal } from "../components/auth/profileEditModal";
 
+export type ProjectStatus = "ACTIVE" | "COMPLETED" | "ARCHIVED";
+
+const projectStatusColor: Record<
+  ProjectStatus,
+  {
+    active: string;
+    inactive: string;
+  }
+> = {
+  ACTIVE: {
+    active: "#22C55E",
+    inactive: "#86EFAC",
+  },
+  COMPLETED: {
+    active: "#3B82F6",
+    inactive: "#93C5FD",
+  },
+  ARCHIVED: {
+    active: "#6B7280",
+    inactive: "#D1D5DB",
+  },
+};
+
 export function RootPageLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -127,7 +150,9 @@ export function RootPageLayout() {
                 <Folder
                   size={15}
                   className={active ? "text-amber-500" : "text-amber-400"}
-                  fill={active ? "#F59E0B" : "#FCD34D"}
+                  fill={projectStatusColor[project.projectStatus  as ProjectStatus][
+                    active ? "active" : "inactive"
+                  ]}
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">

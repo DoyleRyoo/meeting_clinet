@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Pause, Square, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
-import { useApp } from "../components/context/context";
+import {
+  createMockMeetingTranscript,
+  useApp,
+} from "../components/context/context";
 import { formatElapsed, getNowStrings } from "../utils/dateTime";
 import { Waveform } from "../components/recording/waveform";
 import { useSummaryStore } from "../store/summaryStore";
@@ -115,8 +118,7 @@ export function RecordingPage() {
       // formData.append("file", audioBlob, fileName);
       // await recordingApi.uploadRecording(formData);
 
-      const mockAudioText = `총 ${elapsed}초 동안 녹음된 회의 오디오 데이터 원본`;
-      startSummary(mockAudioText);
+      startSummary(createMockMeetingTranscript(elapsed));
       navigate(`/projects/${pid}/record/summarizing`);
     } catch (error: unknown) {
       const message =

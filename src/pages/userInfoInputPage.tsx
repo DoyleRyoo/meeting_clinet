@@ -1,30 +1,20 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
 import { signup } from "../apis/authApi";
+import {
+  INITIAL_SIGNUP_FORM_VALUES,
+  MOCK_OAUTH_USER,
+} from "../components/context/context";
 import { useAuthStore } from "../stores/authStore";
-import type { OAuthUser, SignupFormValues } from "../types/authTypes";
+import type { SignupFormValues } from "../types/authTypes";
 
 type TextFieldName = Exclude<keyof SignupFormValues, "userProfileImage">;
-
-const mockOAuthUser: OAuthUser = {
-  email: "test@gmail.com",
-  name: "테스트 유저",
-  profileImage: null,
-};
-
-const initialValues: SignupFormValues = {
-  companyId: "",
-  userPosition: "",
-  userDepartment: "",
-  userEmployeeNumber: "",
-  userProfileImage: null,
-};
 
 export function UserInfoInputPage() {
   const navigate = useNavigate();
   const { setAccessToken, setOAuthUser } = useAuthStore();
-  const oauthUser = useAuthStore((state) => state.oauthUser) ?? mockOAuthUser;
-  const [values, setValues] = useState<SignupFormValues>(initialValues);
+  const oauthUser = useAuthStore((state) => state.oauthUser) ?? MOCK_OAUTH_USER;
+  const [values, setValues] = useState<SignupFormValues>(INITIAL_SIGNUP_FORM_VALUES);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange =

@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Participant } from "../context/context";
-
-type ParticipantStatus = "ACTIVE" | "LEFT" | "REMOVED";
+import {
+  MOCK_USERS,
+  projectParticipantStatus,
+  projectParticipantStatusLabel,
+  type Participant,
+  type ProjectParticipantStatus,
+} from "../context/context";
 
 interface SearchableUser {
   userId: string;
@@ -22,19 +26,6 @@ interface ParticipantManageModalProps {
   onComplete: (participants: Participant[]) => void;
 }
 
-// 테스트 코드입니다 추후 삭제되어야합니다
-// ===== 삭제 시작: 참가자 관리 Mock 코드 =====
-const mockSearchableUsers: SearchableUser[] = [
-  { userId: "1", name: "유도윤", email: "doyoon@example.com", department: "제품개발팀", profileImage: null, status: "ACTIVE" },
-  { userId: "2", name: "이한선", email: "hanseon@example.com", department: "제품개발팀", profileImage: null, status: "ACTIVE" },
-  { userId: "3", name: "김인영", email: "inyoung@example.com", department: "AI연구팀", profileImage: null, status: "ACTIVE" },
-  { userId: "4", name: "박철현", email: "cheolhyeon@example.com", department: "기획팀", profileImage: null, status: "ACTIVE" },
-  { userId: "5", name: "최지관", email: "jigwan@example.com", department: "디자인팀", profileImage: null, status: "ACTIVE" },
-  { userId: "6", name: "서하늘", email: "haneul@example.com", department: "제품개발팀", profileImage: null, status: "ACTIVE" },
-  { userId: "7", name: "정민준", email: "minjun@example.com", department: "AI연구팀", profileImage: null, status: "ACTIVE" },
-  { userId: "8", name: "윤서연", email: "seoyeon@example.com", department: "디자인팀", profileImage: null, status: "ACTIVE" },
-];
-
 function searchUsersByEmailMock(
   query: string,
   participantIds: string[],
@@ -42,11 +33,18 @@ function searchUsersByEmailMock(
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return [];
 
-  return mockSearchableUsers.filter(
+  return MOCK_USERS.filter(
     (user) =>
-      user.email.toLowerCase().includes(normalizedQuery) &&
+      user.userEmail.toLowerCase().includes(normalizedQuery) &&
       !participantIds.includes(user.userId),
-  );
+  ).map((user) => ({
+    userId: user.userId,
+    name: user.userName,
+    email: user.userEmail,
+    department: user.userDepartment,
+    profileImage: user.userProfileImage,
+    status: user.userStatus ? "ACTIVE" : "INACTIVE",
+  }));
 }
 
 function deleteParticipantMock(
@@ -215,7 +213,7 @@ export function ParticipantManageModal({
                         </p>
                       </div>
                       <p className="shrink-0 text-xs text-muted-foreground">
-                        {participant.projectMemberRole ?? "MEMBER"} · {participant.projectMemberStatus ?? "ACTIVE"} · {participant.projectMemberGrade ?? "MEMBER"}
+                        {participant.projectMemberRole ?? "MEMBER"} · {projectParticipantStatusLabel[participant.projectMemberStatus ?? projectParticipantStatus.active]} · {participant.projectMemberGrade ?? "MEMBER"}
                       </p>
                     </button>
                     {isActive && (
@@ -227,7 +225,7 @@ export function ParticipantManageModal({
                         >
                           참가자 제거
                         </button>
-                        {(["ACTIVE", "INACTIVE", "WITHDRAWN", "ARCHIVED"] as const).map(
+                        {([projectParticipantStatus.active, projectParticipantStatus.left, projectParticipantStatus.removed] as const).map(
                           (status) => (
                             <button
                               key={status}
@@ -235,7 +233,7 @@ export function ParticipantManageModal({
                               onClick={() => handleStatusChange(participant, status)}
                               className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                             >
-                              {status}
+                              {projectParticipantStatusLabel[status]}
                             </button>
                           ),
                         )}
