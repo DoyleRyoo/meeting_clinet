@@ -164,6 +164,11 @@ export interface ActionItem {
   priority: "HIGH" | "MEDIUM" | "LOW";
   status: "미착수" | "진행중" | "완료";
 }
+export interface NotionConnectionState {
+  notionConnected: boolean;
+  notionWorkspaceName?: string;
+  notionWorkspaceIcon?: string;
+}
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
@@ -422,6 +427,63 @@ export const PRIORITY_COLOR: Record<"높음" | "중간" | "낮음", string> = {
   낮음: "#10B981",
 };
 
+// 테스트 코드입니다 추후 삭제되어야합니다
+// ===== 삭제 시작 =====
+const mockNotionConnection: NotionConnectionState = {
+  notionConnected: true,
+  notionWorkspaceName: "Damlok Workspace",
+  notionWorkspaceIcon: "https://www.notion.so/images/favicon.ico",
+};
+
+const emptyNotionConnection: NotionConnectionState = {
+  notionConnected: false,
+};
+
+export function getMockNotionConnectionStatus(
+  ownerKey: string | null,
+): NotionConnectionState {
+  // 실제 백엔드와 연결에 사용되는 코드입니다.
+  // const response = await axios.get("/notion/connection/status");
+  // return response.data;
+
+  if (!ownerKey) return { ...emptyNotionConnection };
+
+  const storedConnection = localStorage.getItem(
+    getNotionConnectionStorageKey(ownerKey),
+  );
+  if (!storedConnection) return { ...emptyNotionConnection };
+
+  try {
+    const parsedConnection: unknown = JSON.parse(storedConnection);
+    return isNotionConnectionState(parsedConnection)
+      ? parsedConnection
+      : { ...emptyNotionConnection };
+  } catch {
+    localStorage.removeItem(getNotionConnectionStorageKey(ownerKey));
+    return { ...emptyNotionConnection };
+  }
+}
+
+function getNotionConnectionStorageKey(ownerKey: string): string {
+  return `notionConnection:${ownerKey}`;
+}
+
+function isNotionConnectionState(
+  value: unknown,
+): value is NotionConnectionState {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.notionConnected === "boolean" &&
+    (candidate.notionWorkspaceName === undefined ||
+      typeof candidate.notionWorkspaceName === "string") &&
+    (candidate.notionWorkspaceIcon === undefined ||
+      typeof candidate.notionWorkspaceIcon === "string")
+  );
+}
+// ===== 삭제 끝 =====
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 interface AppContextValue {
@@ -434,6 +496,11 @@ interface AppContextValue {
   elapsed: number;
   setElapsed: React.Dispatch<React.SetStateAction<number>>;
   timerRef: React.MutableRefObject<ReturnType<typeof setInterval> | null>;
+  notionConnected: boolean;
+  notionWorkspaceName?: string;
+  notionWorkspaceIcon?: string;
+  connectMockNotionWorkspace: () => void;
+  disconnectMockNotionWorkspace: () => void;
 }
 
 const AppContext = createContext<AppContextValue>(null!);
@@ -452,7 +519,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
   const [summaryTab, setSummaryTab] = useState<"full" | "tasks">("full");
   const [elapsed, setElapsed] = useState(0);
+  const [anonymousNotionConnection, setAnonymousNotionConnection] =
+    useState<NotionConnectionState>({ ...emptyNotionConnection });
+  const [, setNotionConnectionRevision] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notionConnection = projectOwnerKey
+    ? getMockNotionConnectionStatus(projectOwnerKey)
+    : anonymousNotionConnection;
 
   const setProjects: React.Dispatch<React.SetStateAction<Project[]>> = (value) => {
     const nextProjects =
@@ -466,8 +539,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // 테스트 코드입니다 추후 삭제되어야합니다
+  // ===== 삭제 시작 =====
+  const connectMockNotionWorkspace = () => {
+    // 실제 백엔드와 연결에 사용되는 코드입니다.
+    // await axios.post("/notion/connection");
+    const nextConnection = { ...mockNotionConnection };
+
+    if (projectOwnerKey) {
+      localStorage.setItem(
+        getNotionConnectionStorageKey(projectOwnerKey),
+        JSON.stringify(nextConnection),
+      );
+      setNotionConnectionRevision((revision) => revision + 1);
+    } else {
+      setAnonymousNotionConnection(nextConnection);
+    }
+  };
+
+  const disconnectMockNotionWorkspace = () => {
+    // 실제 백엔드와 연결에 사용되는 코드입니다.
+    // await axios.delete("/notion/connection");
+    if (projectOwnerKey) {
+      localStorage.removeItem(getNotionConnectionStorageKey(projectOwnerKey));
+      setNotionConnectionRevision((revision) => revision + 1);
+    } else {
+      setAnonymousNotionConnection({ ...emptyNotionConnection });
+    }
+  };
+  // ===== 삭제 끝 =====
+
   return (
-    <AppContext.Provider value={{ projects, setProjects, tasks, setTasks, summaryTab, setSummaryTab, elapsed, setElapsed, timerRef }}>
+    <AppContext.Provider
+      value={{
+        projects,
+        setProjects,
+        tasks,
+        setTasks,
+        summaryTab,
+        setSummaryTab,
+        elapsed,
+        setElapsed,
+        timerRef,
+        notionConnected: notionConnection.notionConnected,
+        notionWorkspaceName: notionConnection.notionWorkspaceName,
+        notionWorkspaceIcon: notionConnection.notionWorkspaceIcon,
+        connectMockNotionWorkspace,
+        disconnectMockNotionWorkspace,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
