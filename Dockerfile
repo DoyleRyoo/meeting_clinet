@@ -1,8 +1,8 @@
-FROM node:22-alpine
+FROM mcr.microsoft.com/devcontainers/javascript-node:22
 
 WORKDIR /app
 
-RUN apk add --no-cache git
+RUN apt-get update && apt-get install -y git
 
 COPY package*.json ./
 
