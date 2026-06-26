@@ -1,26 +1,36 @@
-import { Plus, Save, Trash2, Upload } from "lucide-react";
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Save, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router";
+import type { ActionItem, FullSummarySection as ApiFullSummarySection } from "../apis/apiTypes";
 import {
-  getActionItemsMock,
-  getFullSummaryMock,
-  getShortSummaryMock,
-  type ActionItem,
-  type FullSummarySection,
-  updateMeetingSummariesMock,
-  useApp,
-} from "../components/context/context";
+  getActionItems,
+  getFullSummary,
+  getShortSummary,
+  mapActionItemsResponse,
+  mapFullSummaryResponse,
+  mapShortSummaryResponse,
+  toActionItemUpdatePayload,
+  toFullSummaryUpdatePayload,
+  updateActionItems,
+  updateFullSummary,
+  updateShortSummary,
+} from "../apis/meetingApi";
+import { useApp } from "../components/context/useApp";
+import { ActionItemsSection } from "../components/summary/actionItemsSection";
+import { FullSummarySection } from "../components/summary/fullSummarySection";
+import { ShortSummarySection } from "../components/summary/shortSummarySection";
+import type { EditableFullSummarySection } from "../components/summary/summaryEditorTypes";
+import { useSummaryStore } from "../store/summaryStore";
 import { getNowStrings } from "../utils/dateTime";
 
 type SummaryTab = "short" | "full" | "action";
-type EditableSummaryItem = {
-  id: string;
-  value: string
+type SummaryLocationState = {
+  meetingId?: string;
 };
-type EditableFullSummarySection = {
-  id: string;
-  contextTitle: string;
-  context: EditableSummaryItem[]
+type ProjectParticipantRef = {
+  projectMemberId: string;
+  title?: string;
+  email?: string | null;
 };
 
 const createId = () => String(Date.now()) + "-" + Math.random().toString(36).slice(2);
@@ -29,124 +39,244 @@ const createEmptySection = (): EditableFullSummarySection => ({
   contextTitle: "",
   context: [{
     id: createId(),
-    value: ""
-  }]
+    value: "",
+  }],
 });
-const toEditableSections = (sections: FullSummarySection[]): EditableFullSummarySection[] => sections.length ? sections.map(
+const toEditableSections = (sections: ApiFullSummarySection[]): EditableFullSummarySection[] => sections.length ? sections.map(
   (section) => ({
     id: createId(),
     contextTitle: section.contextTitle,
     context: section.context.length ? section.context.map(
       (value) => ({
         id: createId(),
-        value
+        value,
       })
-    ) : [{ id: createId(), value: "" }]
+    ) : [{ id: createId(), value: "" }],
   })
 ) : [createEmptySection()];
 const toFullSummaryPayload = (
-  sections: EditableFullSummarySection[]
-): FullSummarySection[] => sections.map(
-  (section) => ({ 
+  sections: EditableFullSummarySection[],
+): ApiFullSummarySection[] => sections.map(
+  (section) => ({
     contextTitle: section.contextTitle.trim() || "제목 없음",
-    context: section.context.map(
-      (item) => item.value.trim()).filter(Boolean)
+    context: section.context.map((item) => item.value.trim()).filter(Boolean),
   })
 ).filter(
-  (section) => section.context.length > 0 || section.contextTitle !== "제목 없음"
+  (section) => section.context.length > 0 || section.contextTitle !== "제목 없음",
 );
+
+function resolveActionItemParticipant(
+  item: ActionItem,
+  participants: ProjectParticipantRef[],
+): ProjectParticipantRef | undefined {
+  if (item.projectMemberId) {
+    const matchedById = participants.find((participant) => participant.projectMemberId === item.projectMemberId);
+    if (matchedById) return matchedById;
+  }
+
+  if (item.assigneeEmail) {
+    const matchedByEmail = participants.find((participant) => participant.email === item.assigneeEmail);
+    if (matchedByEmail) return matchedByEmail;
+  }
+
+  if (item.assigneeName) {
+    const matchedByName = participants.find((participant) => participant.title === item.assigneeName);
+    if (matchedByName) return matchedByName;
+  }
+
+  return undefined;
+}
+
+function normalizeActionItem(
+  item: ActionItem,
+  participants: ProjectParticipantRef[],
+): ActionItem {
+  const matchedParticipant = resolveActionItemParticipant(item, participants);
+
+  return {
+    ...item,
+    projectMemberId: item.projectMemberId ?? matchedParticipant?.projectMemberId,
+    assigneeName: item.assigneeName || matchedParticipant?.title || "",
+    assigneeEmail: item.assigneeEmail || matchedParticipant?.email || "",
+  };
+}
+
+function normalizeActionItems(
+  items: ActionItem[],
+  participants: ProjectParticipantRef[],
+): ActionItem[] {
+  return items.map((item) => normalizeActionItem(item, participants));
+}
+
+function createDefaultActionItem(
+  meetingId: string,
+  participants: ProjectParticipantRef[],
+): ActionItem {
+  const defaultParticipant = participants[0];
+
+  return {
+    actionItemId: createId(),
+    meetingId,
+    projectMemberId: defaultParticipant?.projectMemberId,
+    assigneeName: defaultParticipant?.title ?? "",
+    assigneeEmail: defaultParticipant?.email ?? "",
+    task: "",
+    startDate: "",
+    dueDate: "",
+    priority: "MEDIUM",
+    status: "미착수",
+  };
+}
 
 export function SummaryPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { pid } = useParams<{ pid: string }>();
   const { projects } = useApp();
-  const project = projects.find(
-    (currentProject) => currentProject.id === pid
-  );
-  const meetingId = project?.meetings.at(-1)?.id ?? pid ?? "";
+  const meetingContext = useSummaryStore((state) => state.meetingContext);
+  const selectedProject = projects.find((currentProject) => currentProject.id === pid);
+  const projectParticipants = selectedProject?.projectParticipants ?? [];
+  const locationState = location.state as SummaryLocationState | null;
+  const resolvedMeetingId =
+    locationState?.meetingId ??
+    meetingContext.meetingId ??
+    selectedProject?.meetings.at(-1)?.id ??
+    pid ??
+    "";
+  const currentMeeting = selectedProject?.meetings.find((meeting) => meeting.id === resolvedMeetingId);
   const { dateString } = getNowStrings();
-  const meetingTitle = project ? dateString.replace(/\./g, "").slice(2) + " " + (project.meetings.length + 1) + "차 회의" : dateString.replace(/\./g, "").slice(2) + " 1차 회의";
-  const [shortSummary, setShortSummary] = useState(
-    () => getShortSummaryMock(meetingId).shortSummary
-  );
-  const [sections, setSections] = useState(() => toEditableSections(
-    getFullSummaryMock(meetingId)
-  ));
-  const [actionItems, setActionItems] = useState<ActionItem[]>(
-    () => getActionItemsMock(meetingId)
-  );
+  const meetingTitle = currentMeeting?.title ??
+    (selectedProject
+      ? `${dateString.replace(/\./g, "").slice(2)} ${selectedProject.meetings.length + 1}차 회의`
+      : `${dateString.replace(/\./g, "").slice(2)} 1차 회의`);
+  const [shortSummary, setShortSummary] = useState("");
+  const [sections, setSections] = useState(() => toEditableSections([]));
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [activeTab, setActiveTab] = useState<SummaryTab>("short");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!resolvedMeetingId) return;
+    let ignore = false;
+
+    async function loadMeetingSummaries() {
+      try {
+        const [shortResponse, fullResponse, actionResponse] = await Promise.all([
+          getShortSummary(resolvedMeetingId),
+          getFullSummary(resolvedMeetingId),
+          getActionItems(resolvedMeetingId),
+        ]);
+        if (ignore) return;
+        setShortSummary(mapShortSummaryResponse(shortResponse));
+        setSections(toEditableSections(mapFullSummaryResponse(fullResponse)));
+        setActionItems(normalizeActionItems(mapActionItemsResponse(actionResponse), projectParticipants));
+        setErrorMessage(null);
+      } catch (error) {
+        if (ignore) return;
+        setErrorMessage(
+          error instanceof Error ? error.message : "회의 요약을 불러오지 못했습니다.",
+        );
+      }
+    }
+
+    void loadMeetingSummaries();
+    return () => {
+      ignore = true;
+    };
+  }, [projectParticipants, resolvedMeetingId]);
+
+  useEffect(() => {
+    setActionItems((current) => normalizeActionItems(current, projectParticipants));
+  }, [projectParticipants]);
+
   const updateSection = (
     sectionId: string,
-    update: (section: EditableFullSummarySection) => EditableFullSummarySection
+    update: (section: EditableFullSummarySection) => EditableFullSummarySection,
   ) => setSections(
     (current) => current.map(
-      (section) => section.id === sectionId ? update(section) : section
-    )
+      (section) => section.id === sectionId ? update(section) : section,
+    ),
   );
+
   const removeSection = (sectionId: string) => setSections(
     (current) => {
-      const next = current.filter(
-        (section) => section.id !== sectionId
-      ); 
-      
+      const next = current.filter((section) => section.id !== sectionId);
       return next.length ? next : [createEmptySection()];
-    }
+    },
   );
+
   const removeItem = (sectionId: string, itemId: string) => updateSection(
     sectionId, (section) => {
-      const next = section.context.filter(
-        (item) => item.id !== itemId
-      ); 
-      
+      const next = section.context.filter((item) => item.id !== itemId);
+
       return {
-        ...section, context: next.length ? next : [{
+        ...section,
+        context: next.length ? next : [{
           id: createId(),
-          value: ""
-        }]
+          value: "",
+        }],
       };
+    },
+  );
+
+  const addSection = () => setSections((current) => [...current, createEmptySection()]);
+
+  const addItem = (sectionId: string) => updateSection(
+    sectionId, (current) => ({
+      ...current,
+      context: [
+        ...current.context,
+        { id: createId(), value: "" },
+      ],
+    })
+  );
+
+  const save = async () => {
+    if (!resolvedMeetingId || isSaving) return;
+    setIsSaving(true);
+    try {
+      await Promise.all([
+        updateShortSummary(resolvedMeetingId, shortSummary.trim()),
+        updateFullSummary(resolvedMeetingId, toFullSummaryUpdatePayload(toFullSummaryPayload(sections))),
+        updateActionItems(resolvedMeetingId, toActionItemUpdatePayload(resolvedMeetingId, actionItems)),
+      ]);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "회의 요약을 저장하지 못했습니다.",
+      );
+    } finally {
+      setIsSaving(false);
     }
-  );
-  const save = () => updateMeetingSummariesMock(
-    meetingId,
-    shortSummary.trim(),
-    toFullSummaryPayload(sections),
-    actionItems
-  );
+  };
+
   const updateAction = (id: string | undefined, patch: Partial<ActionItem>) => setActionItems(
       (items) => items.map(
-        (item) => item.actionItemId === id ? { ...item, ...patch } : item
-    )
+        (item) => item.actionItemId === id ? { ...item, ...patch } : item,
+    ),
   );
+
   const addActionItem = () => setActionItems((items) => [
     ...items,
-    {
-      actionItemId: createId(),
-      meetingId,
-      assigneeName: "",
-      assigneeEmail: "",
-      task: "",
-      startDate: "",
-      dueDate: "",
-      priority: "MEDIUM",
-      status: "미착수",
-    },
+    createDefaultActionItem(resolvedMeetingId, projectParticipants),
   ]);
 
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="relative flex items-center justify-center border-b border-border px-10 py-5">
       <h1 className="text-[18px] font-semibold">{meetingTitle}</h1>
       <div className="absolute right-10 flex gap-2">
-        <button 
-          onClick={save}
-          className="flex items-center gap-2 rounded-full bg-foreground px-5 py-2 text-sm font-semibold text-white"
+        <button
+          onClick={() => void save()}
+          disabled={isSaving}
+          className="flex items-center gap-2 rounded-full bg-foreground px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
           <Save size={14} />
           저장
         </button>
 
-        <button 
-          onClick={() => navigate(`/projects/${pid}/record/uploading`)} 
+        <button
+          onClick={() => navigate(`/projects/${pid}/record/uploading`)}
           className="flex items-center gap-2 rounded-full border border-border px-5 py-2 text-sm font-semibold text-foreground/70"
         >
           <Upload size={14} />
@@ -154,16 +284,21 @@ export function SummaryPage() {
         </button>
       </div>
     </div>
+    {errorMessage && (
+      <p className="border-b border-border bg-destructive/10 px-10 py-2 text-sm text-destructive">
+        {errorMessage}
+      </p>
+    )}
     <div className="border-b border-border px-10">
       <div className="mx-auto flex w-full max-w-[900px] gap-1">
-        {([['short', '한 줄 요약'], ['full', '전체 요약'], ['action', '할 일 요약']] as const).map(
+        {([["short", "한 줄 요약"], ["full", "전체 요약"], ["action", "할 일 요약"]] as const).map(
           ([tab, label]) => (
             <button
               key={tab}
               type="button"
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-sm font-semibold transition-colors ${activeTab === tab ? 
-                "border-b-2 border-foreground text-foreground" : 
+              className={`px-5 py-3 text-sm font-semibold transition-colors ${activeTab === tab ?
+                "border-b-2 border-foreground text-foreground" :
                 "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -176,214 +311,29 @@ export function SummaryPage() {
     <div className="flex flex-1 justify-center overflow-y-auto px-10 py-8">
       <div className="w-full max-w-[900px] space-y-8">
       {activeTab === "short" && (
-        <section className="rounded-xl border border-border bg-white p-5">
-          <h2 className="text-base font-semibold">
-            한 줄 요약
-          </h2>
-
-          <textarea 
-            value={shortSummary}
-            maxLength={200}
-            onChange={(event) => setShortSummary(event.target.value)}
-            rows={3}
-            className="mt-3 w-full resize-none rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary"
-          />
-          
-          <p className="mt-1 text-right text-xs text-muted-foreground">
-            {shortSummary.length} / 200
-          </p>
-        </section>
+        <ShortSummarySection
+          shortSummary={shortSummary}
+          onChange={setShortSummary}
+        />
       )}
 
       {activeTab === "full" && (
-        <section className="rounded-xl border border-border bg-white p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">
-              전체 요약
-            </h2>
-            <button
-              type="button"
-              onClick={() => setSections((current) => [...current, createEmptySection()])}
-              className="flex items-center gap-1 text-sm text-primary"
-            >
-              <Plus size={14} />
-              섹션 추가
-            </button>
-          </div>
-
-          <div className="mt-4 space-y-5">{sections.map((section) => 
-            <div key={section.id} className="rounded-lg border border-border p-4">
-              <div className="flex gap-2">
-                <input
-                  value={section.contextTitle}
-                  onChange={(event) => updateSection(section.id, (current) => ({ ...current, contextTitle: event.target.value }))}
-                  onKeyDown={(event) => {
-                    if (event.key === "Backspace" && !section.contextTitle && section.context.every((item) => !item.value.trim())) {
-                      event.preventDefault();
-                      removeSection(section.id);
-                    }
-                  }}
-                  placeholder="섹션 제목"
-                  className="h-9 flex-1 rounded-md border border-border px-2 text-sm outline-none focus:border-primary"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeSection(section.id)}
-                  className="rounded-md p-2 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-
-              <div className="mt-3 space-y-2">{section.context.map(
-                (item) => 
-                  <div key={item.id} className="flex gap-2">
-                    <textarea
-                      value={item.value}
-                      onChange={(event) => updateSection(section.id, (current) => ({
-                        ...current,
-                        context: current.context.map((currentItem) => currentItem.id === item.id ? {
-                          ...currentItem,
-                          value: event.target.value
-                        } : currentItem)
-                      }))}
-                      onKeyDown={(event) => {
-                        if (event.key === "Backspace" && !item.value) {
-                          event.preventDefault();
-                          removeItem(section.id, item.id);
-                        }
-                      }}
-                      rows={2}
-                      className="flex-1 resize-none rounded-md border border-border px-2 py-1.5 text-sm outline-none focus:border-primary"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeItem(section.id, item.id)}
-                      className="rounded-md p-2 text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => updateSection(
-                  section.id, (current) => ({
-                    ...current,
-                    context: [
-                      ...current.context,
-                      { id: createId(), value: "" }
-                    ]
-                  })
-                )}
-                className="mt-3 flex items-center gap-1 text-sm text-primary"
-              >
-                <Plus size={14} />
-                항목 추가
-              </button>
-            </div>)}
-          </div>
-        </section>
+        <FullSummarySection
+          sections={sections}
+          onAddSection={addSection}
+          onUpdateSection={updateSection}
+          onRemoveSection={removeSection}
+          onRemoveItem={removeItem}
+          onAddItem={addItem}
+        />
       )}
 
       {activeTab === "action" && (
-        <section className="rounded-xl border border-border bg-white p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">
-              할 일 요약
-            </h2>
-            <button
-              type="button"
-              onClick={addActionItem}
-              className="flex items-center gap-1 text-sm text-primary"
-            >
-              <Plus size={14} />
-              추가
-            </button>
-          </div>
-
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="border-b border-border text-xs text-muted-foreground">
-                <tr>
-                  <th>담당자</th>
-                  <th>이메일</th>
-                  <th>업무</th>
-                  <th>시작일</th>
-                  <th>마감일</th>
-                  <th>우선순위</th>
-                  <th>상태</th>
-                </tr>
-              </thead>
-
-              <tbody>{actionItems.map((item) => 
-                <tr key={item.actionItemId} className="border-b border-border/70">
-                  <td className="py-2">
-                    <input
-                      value={item.assigneeName}
-                      onChange={(event) => updateAction(item.actionItemId, { assigneeName: event.target.value })}
-                      className="w-20 bg-transparent outline-none"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={item.assigneeEmail}
-                      onChange={(event) => updateAction(item.actionItemId, { assigneeEmail: event.target.value })}
-                      className="w-36 bg-transparent outline-none"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={item.task}
-                      onChange={(event) => updateAction(item.actionItemId, { task: event.target.value })}
-                      className="w-40 bg-transparent outline-none"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="date"
-                      value={item.startDate}
-                      onChange={(event) => updateAction(item.actionItemId, { startDate: event.target.value })}
-                      className="bg-transparent outline-none"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="date"
-                      value={item.dueDate}
-                      onChange={(event) => updateAction(item.actionItemId, { dueDate: event.target.value })}
-                      className="bg-transparent outline-none"
-                    />
-                  </td>
-                  <td>
-                    <select
-                      value={item.priority}
-                      onChange={(event) => updateAction(item.actionItemId, { priority: event.target.value as ActionItem["priority"] })}
-                      className="bg-transparent outline-none"
-                    >
-                      <option value="HIGH">높음</option>
-                      <option value="MEDIUM">중간</option>
-                      <option value="LOW">낮음</option>
-                    </select>
-                  </td>
-                  <td>
-                    <select
-                      value={item.status}
-                      onChange={(event) => updateAction(item.actionItemId, { status: event.target.value as ActionItem["status"] })}
-                      className="bg-transparent outline-none"
-                    >
-                      <option>미착수</option>
-                      <option>진행중</option>
-                      <option>완료</option>
-                    </select>
-                  </td>
-                </tr>)}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <ActionItemsSection
+          actionItems={actionItems}
+          onAddActionItem={addActionItem}
+          onUpdateAction={updateAction}
+        />
       )}
     </div></div>
   </div>;

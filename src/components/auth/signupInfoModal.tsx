@@ -1,9 +1,16 @@
 import { type ChangeEvent, type FormEvent, useState } from "react";
 import { useNavigate } from "react-router";
 import { signup } from "../../apis/authApi";
-import { INITIAL_SIGNUP_FORM_VALUES } from "../context/context";
 import { useAuthStore } from "../../stores/authStore";
 import type { SignupFormValues } from "../../types/authTypes";
+
+const INITIAL_SIGNUP_FORM_VALUES: SignupFormValues = {
+  companyId: "",
+  userPosition: "",
+  userDepartment: "",
+  userEmployeeNumber: "",
+  userProfileImage: null,
+};
 
 type TextFieldName = Exclude<keyof SignupFormValues, "userProfileImage">;
 

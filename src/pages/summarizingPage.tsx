@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router";
-import { useApp } from "../components/context/context";
+import { useApp } from "../components/context/useApp";
 import { LoadingDots } from "../components/common/loadingDots";
 import { useSummaryStore } from "../store/summaryStore";
 
@@ -12,13 +12,14 @@ export function SummarizingPage() {
   // 스토어에서 status와 에러 메시지를 구독합니다.
   const status = useSummaryStore((state) => state.status);
   const errorMessage = useSummaryStore((state) => state.errorMessage);
+  const meetingId = useSummaryStore((state) => state.meetingContext.meetingId);
   const resetSummary = useSummaryStore((state) => state.resetSummary);
 
   useEffect(() => {
     // 1. 성공 시 결과 페이지로 이동
     if (status === "success") {
       setSummaryTab("full");
-      navigate(`/projects/${pid}/record/summary`);
+      navigate(`/projects/${pid}/record/summary`, { state: meetingId ? { meetingId } : undefined });
     }
 
     // 2. 실패 시 토스트/얼럿 출력 후 이전 페이지로 복귀
@@ -27,7 +28,7 @@ export function SummarizingPage() {
       resetSummary(); // 상태 초기화
       navigate(-1); // 이전 페이지(TextToAiPage)로 이동
     }
-  }, [status, errorMessage, navigate, pid, setSummaryTab, resetSummary]);
+  }, [status, errorMessage, navigate, pid, setSummaryTab, resetSummary, meetingId]);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5">

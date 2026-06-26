@@ -1,14 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, Folder, Plus } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router";
-import { projectStatusColor, type ProjectStatus, useApp } from "../components/context/context";
 import { useAuthStore } from "../stores/authStore";
 import { ProfileEditModal } from "../components/auth/profileEditModal";
+import { getProjectList, mapProjectListResponse } from "../apis/projectApi";
+import type { ProjectStatus, ProjectView } from "../apis/apiTypes";
+
+const projectStatusColor: Record<
+  ProjectStatus,
+  { active: string; inactive: string }
+> = {
+  ACTIVE: { active: "#22C55E", inactive: "#86EFAC" },
+  COMPLETED: { active: "#3B82F6", inactive: "#93C5FD" },
+  ARCHIVED: { active: "#6B7280", inactive: "#D1D5DB" },
+};
 
 export function RootPageLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { projects } = useApp();
+  const [projects, setProjects] = useState<ProjectView[]>([]);
   const isAuthenticated = useAuthStore(
     (state) => state.status === "authenticated",
   );
@@ -16,6 +26,25 @@ export function RootPageLayout() {
   const logout = useAuthStore((state) => state.logout);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let ignore = false;
+
+    async function loadProjects() {
+      try {
+        const response = await getProjectList();
+        if (!ignore) setProjects(mapProjectListResponse(response));
+      } catch (error) {
+        console.error("Failed to load project list", error);
+      }
+    }
+
+    void loadProjects();
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated, pathname]);
 
   const handleLogout = () => {
     logout();
@@ -124,7 +153,7 @@ export function RootPageLayout() {
         </div>
 
         <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-4">
-          {projects.map((project) => {
+          {(isAuthenticated ? projects : []).map((project) => {
             const active =
               pathname === `/projects/${project.id}` ||
               pathname === `/projects/${project.id}/update`;
@@ -143,9 +172,6 @@ export function RootPageLayout() {
                   size={15}
                   className={active ? "text-amber-500" : "text-amber-400"}
                   fill={getProjectStatusColor(project.projectStatus, active)}
-                  // fill={projectStatusColor[project.projectStatus  as ProjectStatus][
-                  //   active ? "active" : "inactive"
-                  // ]}
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">

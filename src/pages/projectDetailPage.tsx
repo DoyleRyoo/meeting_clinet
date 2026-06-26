@@ -1,48 +1,88 @@
 import { ChevronRight, Folder } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
-  getProjectDetail,
-  projectStatus,
-  projectStatusColor,
-  projectStatusLabel,
-  type ProjectStatus,
-  updateProjectStatus,
-  useApp,
-} from "../components/context/context";
+  getProjectDetail as getProjectDetailApi,
+  mapProjectDetailResponse,
+  updateProjectStatusApi,
+} from "../apis/projectApi";
+import { projectStatus, type ProjectDetailResponse, type ProjectStatus } from "../apis/apiTypes";
+
+const projectStatusLabel: Record<ProjectStatus, string> = {
+  ACTIVE: "진행중",
+  COMPLETED: "완료",
+  ARCHIVED: "보관됨",
+};
+
+const projectStatusColor: Record<ProjectStatus, { badgeClassName: string }> = {
+  ACTIVE: { badgeClassName: "bg-green-100 text-green-700" },
+  COMPLETED: { badgeClassName: "bg-blue-100 text-blue-700" },
+  ARCHIVED: { badgeClassName: "bg-gray-100 text-gray-700" },
+};
 
 export function ProjectDetailPage() {
   const navigate = useNavigate();
   const { pid } = useParams<{ pid: string }>();
-  const { projects, setProjects } = useApp();
+  const [projectDetail, setProjectDetail] = useState<ProjectDetailResponse | null>(null);
   const [isStatusSelectorOpen, setIsStatusSelectorOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const selectedProject = projects.find((project) => project.id === pid);
-  const projectDetail = getProjectDetail(pid ?? "", projects);
+  useEffect(() => {
+    if (!pid) return;
+    const projectId = pid;
+    let ignore = false;
 
-  const handleProjectStatusChange = (nextStatus: ProjectStatus) => {
+    async function loadProjectDetail() {
+      try {
+        const response = await getProjectDetailApi(projectId);
+        if (ignore) return;
+        setProjectDetail(mapProjectDetailResponse(response));
+        setErrorMessage(null);
+      } catch (error) {
+        if (ignore) return;
+        setProjectDetail(null);
+        setErrorMessage(
+          error instanceof Error ? error.message : "프로젝트 상세를 불러오지 못했습니다.",
+        );
+      }
+    }
+
+    void loadProjectDetail();
+    return () => {
+      ignore = true;
+    };
+  }, [pid]);
+
+  const handleProjectStatusChange = async (nextStatus: ProjectStatus) => {
     if (!projectDetail || nextStatus === projectDetail.status) {
       setIsStatusSelectorOpen(false);
       return;
     }
-    const updatedProject = updateProjectStatus(projectDetail.projectId, nextStatus, projects);
-    if (updatedProject) {
-      setProjects((currentProjects) => currentProjects.map((project) =>
-        project.id === updatedProject.id ? updatedProject : project,
-      ));
+
+    try {
+      await updateProjectStatusApi(projectDetail.projectId, nextStatus);
+      setProjectDetail((current) => current ? { ...current, status: nextStatus } : current);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "프로젝트 상태를 변경하지 못했습니다.",
+      );
+    } finally {
+      setIsStatusSelectorOpen(false);
     }
-    setIsStatusSelectorOpen(false);
   };
 
-  if (!selectedProject || !projectDetail) {
+  if (!projectDetail) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="text-sm text-muted-foreground">
-          프로젝트를 찾을 수 없습니다.
+          {errorMessage ?? "프로젝트를 불러오는 중입니다."}
         </p>
       </div>
     );
   }
+
+  const meetings = projectDetail.meetings ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -57,6 +97,11 @@ export function ProjectDetailPage() {
           </button>
         </div>
       </div>
+      {errorMessage && (
+        <p className="border-b border-border bg-destructive/10 px-10 py-2 text-sm text-destructive">
+          {errorMessage}
+        </p>
+      )}
 
       <div className="flex-1 min-h-0 overflow-hidden px-6 py-6">
         <div className="flex h-full justify-center">
@@ -81,7 +126,7 @@ export function ProjectDetailPage() {
                               <button
                                 key={status}
                                 type="button"
-                                onClick={() => handleProjectStatusChange(status)}
+                                onClick={() => void handleProjectStatusChange(status)}
                                 className={`w-full rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${status === projectDetail.status ? "bg-muted font-semibold" : ""}`}
                               >
                                 {projectStatusLabel[status]}
@@ -111,11 +156,10 @@ export function ProjectDetailPage() {
 
             <section className="min-h-0 overflow-y-auto">
               <div className="space-y-2">
-                {[...selectedProject.meetings].reverse().map((meeting) => (
+                {[...meetings].reverse().map((meeting) => (
                   <button
                     key={meeting.id}
-                    // 테스트 단계에서만 사용하는 코드입니다. 추후 백엔드 회의 상세 조회 API 연동 시 교체가 필요합니다.
-                    onClick={() => navigate(`/projects/${pid}/record/summary`)}
+                    onClick={() => navigate(`/projects/${pid}/record/summary`, { state: { meetingId: meeting.id } })}
                     className="group flex w-full items-center gap-3.5 rounded-xl border border-border bg-white px-4 py-4 transition-all hover:shadow-sm"
                   >
                     <Folder
@@ -134,7 +178,7 @@ export function ProjectDetailPage() {
                     />
                   </button>
                 ))}
-                {selectedProject.meetings.length === 0 && (
+                {meetings.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                     <p className="text-sm font-light">아직 회의가 없습니다.</p>
                     <p className="mt-1 text-sm font-light">

@@ -1,11 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  MOCK_USERS,
   projectParticipantStatus,
-  projectParticipantStatusLabel,
   type Participant,
   type ProjectParticipantStatus,
-} from "../context/context";
+  type UserDto,
+} from "../../apis/apiTypes";
+import {
+  deleteParticipant,
+  updateParticipantStatus,
+} from "../../apis/participantApi";
+import { getUserList } from "../../apis/userApi";
+
+const projectParticipantStatusLabel: Record<ProjectParticipantStatus, string> = {
+  ACTIVE: "참가중",
+  LEFT: "프로젝트 미참가",
+  REMOVED: "퇴사",
+};
 
 interface SearchableUser {
   userId: string;
@@ -26,46 +36,17 @@ interface ParticipantManageModalProps {
   onComplete: (participants: Participant[]) => void;
 }
 
-function searchUsersByEmailMock(
-  query: string,
-  participantIds: string[],
-): SearchableUser[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return [];
-
-  return MOCK_USERS.filter(
-    (user) =>
-      user.userEmail.toLowerCase().includes(normalizedQuery) &&
-      !participantIds.includes(user.userId),
-  ).map((user) => ({
-    userId: user.userId,
-    name: user.userName,
-    email: user.userEmail,
-    department: user.userDepartment,
-    profileImage: user.userProfileImage,
-    status: user.userStatus ? "ACTIVE" : "INACTIVE",
-  }));
+function mapUserToSearchableUser(user: UserDto): SearchableUser {
+  return {
+    userId: String(user.user_id),
+    name: user.user_name,
+    email: user.user_email,
+    department: user.user_department,
+    position: user.user_role,
+    profileImage: user.user_profile_image,
+    status: String(user.user_status),
+  };
 }
-
-function deleteParticipantMock(
-  participants: Participant[],
-  participantId: string,
-): Participant[] {
-  return participants.filter((participant) => participant.id !== participantId);
-}
-
-function updateParticipantStatusMock(
-  participants: Participant[],
-  participantId: string,
-  status: ProjectParticipantStatus,
-): Participant[] {
-  return participants.map((participant) =>
-    participant.id === participantId
-      ? { ...participant, projectMemberStatus: status }
-      : participant,
-  );
-}
-// ===== 삭제 끝: 참가자 관리 Mock 코드 =====
 
 export function ParticipantManageModal({
   isOpen,
@@ -78,6 +59,7 @@ export function ParticipantManageModal({
   const [searchResults, setSearchResults] = useState<SearchableUser[]>([]);
   const [temporaryParticipants, setTemporaryParticipants] = useState<Participant[]>([]);
   const [activeParticipantId, setActiveParticipantId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const participantIds = useMemo(
     () => temporaryParticipants.map((participant) => participant.id),
     [temporaryParticipants],
@@ -85,19 +67,55 @@ export function ParticipantManageModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    setEmailQuery("");
-    setSearchResults([]);
-    setActiveParticipantId(null);
-    setTemporaryParticipants(initialParticipants.map((participant) => ({ ...participant })));
+    const timeoutId = window.setTimeout(() => {
+      setEmailQuery("");
+      setSearchResults([]);
+      setErrorMessage(null);
+      setActiveParticipantId(null);
+      setTemporaryParticipants(initialParticipants.map((participant) => ({ ...participant })));
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
   }, [initialParticipants, isOpen]);
 
   useEffect(() => {
-    // 실제 백엔드와 연결에 사용되는 코드입니다
-    // 백엔드 프로젝트 참가자 목록 조회 API 연동 완료 후 주석을 해제하여 사용합니다.
-    // const response = await axios.get("/participant/list", { params: { pid: projectId } });
-    // return response.data;
-    setSearchResults(searchUsersByEmailMock(emailQuery, participantIds));
-  }, [emailQuery, participantIds, projectId]);
+    if (!isOpen) return;
+
+    const normalizedQuery = emailQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      const timeoutId = window.setTimeout(() => setSearchResults([]), 0);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    let ignore = false;
+
+    async function loadUsers() {
+      try {
+        const users = await getUserList<UserDto[]>();
+        if (ignore) return;
+        setSearchResults(
+          users
+            .filter(
+              (user) =>
+                user.user_email.toLowerCase().includes(normalizedQuery) &&
+                !participantIds.includes(String(user.user_id)),
+            )
+            .map(mapUserToSearchableUser),
+        );
+        setErrorMessage(null);
+      } catch (error) {
+        if (ignore) return;
+        setSearchResults([]);
+        setErrorMessage(
+          error instanceof Error ? error.message : "사용자 목록을 불러오지 못했습니다.",
+        );
+      }
+    }
+
+    void loadUsers();
+    return () => {
+      ignore = true;
+    };
+  }, [emailQuery, isOpen, participantIds, projectId]);
 
   const handleAddUser = (user: SearchableUser) => {
     setTemporaryParticipants((participants) => [
@@ -116,27 +134,48 @@ export function ParticipantManageModal({
     ]);
   };
 
-  const handleRemove = (participant: Participant) => {
-    // 실제 백엔드와 연결에 사용되는 코드입니다
-    // 백엔드 프로젝트 참가자 제외 API 연동 완료 후 주석을 해제하여 사용합니다.
-    // await axios.delete("/participant", { data: { projectMemberId: participant.projectMemberId } });
-    setTemporaryParticipants((participants) =>
-      deleteParticipantMock(participants, participant.id),
-    );
-    setActiveParticipantId(null);
+  const handleRemove = async (participant: Participant) => {
+    try {
+      if (participant.projectMemberId) {
+        await deleteParticipant({ project_member_id: participant.projectMemberId });
+      }
+      setTemporaryParticipants((participants) =>
+        participants.filter((current) => current.id !== participant.id),
+      );
+      setActiveParticipantId(null);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "참가자를 제거하지 못했습니다.",
+      );
+    }
   };
 
-  const handleStatusChange = (
+  const handleStatusChange = async (
     participant: Participant,
     status: ProjectParticipantStatus,
   ) => {
-    // 실제 백엔드와 연결에 사용되는 코드입니다
-    // 백엔드 프로젝트 참가자 상태 수정 API 연동 완료 후 주석을 해제하여 사용합니다.
-    // await axios.patch("/participant/status", { projectMemberId: participant.projectMemberId, status });
-    setTemporaryParticipants((participants) =>
-      updateParticipantStatusMock(participants, participant.id, status),
-    );
-    setActiveParticipantId(null);
+    try {
+      if (participant.projectMemberId) {
+        await updateParticipantStatus({
+          project_member_id: participant.projectMemberId,
+          project_status: status,
+        });
+      }
+      setTemporaryParticipants((participants) =>
+        participants.map((current) =>
+          current.id === participant.id
+            ? { ...current, projectMemberStatus: status }
+            : current,
+        ),
+      );
+      setActiveParticipantId(null);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "참가자 상태를 변경하지 못했습니다.",
+      );
+    }
   };
 
   if (!isOpen) return null;
@@ -152,6 +191,11 @@ export function ParticipantManageModal({
         <h2 id="participant-manage-title" className="text-lg font-semibold">
           참가자 관리
         </h2>
+        {errorMessage && (
+          <p className="mt-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {errorMessage}
+          </p>
+        )}
 
         <div className="mt-5 grid min-h-0 flex-1 grid-cols-2 gap-5">
           <section className="flex min-h-0 flex-col border-r border-border pr-5">
@@ -209,7 +253,7 @@ export function ParticipantManageModal({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{participant.title}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {participant.email ?? `${participant.id}@example.com`}
+                          {participant.email ?? ""}
                         </p>
                       </div>
                       <p className="shrink-0 text-xs text-muted-foreground">
@@ -220,7 +264,7 @@ export function ParticipantManageModal({
                       <div className="ml-11 mr-2 flex flex-wrap items-center gap-1 border-t border-border px-2 py-2">
                         <button
                           type="button"
-                          onClick={() => handleRemove(participant)}
+                          onClick={() => void handleRemove(participant)}
                           className="rounded-md px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
                         >
                           참가자 제거
@@ -230,7 +274,7 @@ export function ParticipantManageModal({
                             <button
                               key={status}
                               type="button"
-                              onClick={() => handleStatusChange(participant, status)}
+                              onClick={() => void handleStatusChange(participant, status)}
                               className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                             >
                               {projectParticipantStatusLabel[status]}

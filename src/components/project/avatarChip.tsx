@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import type { Participant } from "../context/context";
+import type { Participant } from "../../types/participant";
 
 interface AvatarChipProps {
   participant: Participant;

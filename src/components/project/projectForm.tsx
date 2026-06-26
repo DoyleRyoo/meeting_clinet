@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import { ParticipantManageModal } from "./participantManageModal";
-import {
-  type Participant,
-} from "../context/context";
+import type { Participant } from "../../apis/apiTypes";
 
 interface ProjectFormData {
   title: string;

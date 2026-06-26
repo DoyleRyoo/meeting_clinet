@@ -1,27 +1,63 @@
-import { type ChangeEvent, type FormEvent, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { signup } from "../apis/authApi";
 import {
-  INITIAL_SIGNUP_FORM_VALUES,
-  MOCK_OAUTH_USER,
-  useApp,
-} from "../components/context/context";
+  disconnectNotionWorkspace,
+  getNotionConnectionStatus,
+  type NotionConnectionStatusResponse,
+} from "../apis/notionApi";
 import { useAuthStore } from "../stores/authStore";
 import type { SignupFormValues } from "../types/authTypes";
 
 type TextFieldName = Exclude<keyof SignupFormValues, "userProfileImage">;
 
+const INITIAL_SIGNUP_FORM_VALUES: SignupFormValues = {
+  companyId: "",
+  userPosition: "",
+  userDepartment: "",
+  userEmployeeNumber: "",
+  userProfileImage: null,
+};
+
 export function UserInfoInputPage() {
   const navigate = useNavigate();
-  const { setAccessToken, setOAuthUser } = useAuthStore();
-  const {
-    disconnectMockNotionWorkspace,
-    notionConnected,
-    notionWorkspaceName,
-  } = useApp();
-  const oauthUser = useAuthStore((state) => state.oauthUser) ?? MOCK_OAUTH_USER;
+  const { setOAuthUser } = useAuthStore();
+  const oauthUser = useAuthStore((state) => state.oauthUser);
   const [values, setValues] = useState<SignupFormValues>(INITIAL_SIGNUP_FORM_VALUES);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [connection, setConnection] = useState<NotionConnectionStatusResponse | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isLoadingConnection, setIsLoadingConnection] = useState(true);
+
+  useEffect(() => {
+    if (!oauthUser) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    let ignore = false;
+    async function loadConnection() {
+      try {
+        const response = await getNotionConnectionStatus();
+        if (ignore) return;
+        setConnection(response);
+        setConnectionError(null);
+      } catch (error) {
+        if (ignore) return;
+        setConnection(null);
+        setConnectionError(error instanceof Error ? error.message : "Notion 연결 상태를 불러오지 못했습니다.");
+      } finally {
+        if (!ignore) setIsLoadingConnection(false);
+      }
+    }
+
+    void loadConnection();
+    return () => {
+      ignore = true;
+    };
+  }, [navigate, oauthUser]);
+
+  if (!oauthUser) return null;
 
   const handleChange =
     (field: TextFieldName) => (event: ChangeEvent<HTMLInputElement>) => {
@@ -53,12 +89,12 @@ export function UserInfoInputPage() {
     const formData = new FormData();
     formData.append("email", oauthUser.email);
     formData.append("name", oauthUser.name);
-    formData.append("companyId", values.companyId.trim());
-    formData.append("userPosition", values.userPosition.trim());
-    formData.append("userDepartment", values.userDepartment.trim());
-    formData.append("userEmployeeNumber", values.userEmployeeNumber.trim());
+    formData.append("company_id", values.companyId.trim());
+    formData.append("user_role", values.userPosition.trim());
+    formData.append("user_department", values.userDepartment.trim());
+    formData.append("user_employee_number", values.userEmployeeNumber.trim());
     if (values.userProfileImage) {
-      formData.append("userProfileImage", values.userProfileImage);
+      formData.append("user_profile_image", values.userProfileImage);
     }
 
     setIsSubmitting(true);
@@ -75,7 +111,6 @@ export function UserInfoInputPage() {
         userEmployeeNumber: values.userEmployeeNumber.trim(),
         profileImage,
       });
-      setAccessToken("mock-access-token");
       navigate("/signup/notion", { replace: true });
     } catch (error: unknown) {
       const message =
@@ -88,17 +123,14 @@ export function UserInfoInputPage() {
     }
   };
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("이미지 데이터를 읽지 못했습니다."));
-    };
-    reader.onerror = () => reject(new Error("이미지 파일을 읽지 못했습니다."));
-    reader.readAsDataURL(file);
-  });
-}
+  const handleDisconnectNotion = async () => {
+    try {
+      await disconnectNotionWorkspace();
+      setConnection({ notion_connected: false });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Notion 연결을 해제하지 못했습니다.");
+    }
+  };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8">
@@ -135,13 +167,13 @@ function readFileAsDataUrl(file: File): Promise<string> {
               <h2 className="text-base font-semibold text-foreground">
                 Notion Workspace
               </h2>
-              {notionConnected ? (
+              {isLoadingConnection ? (
+                <p className="mt-2 text-sm text-muted-foreground">연결 상태를 확인하는 중입니다.</p>
+              ) : connection?.notion_connected ? (
                 <div className="mt-2">
-                  <p className="text-sm font-semibold text-green-700">
-                    Notion 연결됨
-                  </p>
+                  <p className="text-sm font-semibold text-green-700">Notion 연결됨</p>
                   <p className="mt-1 truncate text-sm text-muted-foreground">
-                    {notionWorkspaceName || "Notion 워크스페이스"}
+                    {connection.notion_workspace_name || "Notion 워크스페이스"}
                   </p>
                 </div>
               ) : (
@@ -149,39 +181,44 @@ function readFileAsDataUrl(file: File): Promise<string> {
                   Notion이 연결되어 있지 않습니다.
                 </p>
               )}
+              {connectionError && (
+                <p className="mt-2 text-sm text-destructive">{connectionError}</p>
+              )}
             </div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            {notionConnected ? (
-              <>
-                <button
-                  type="button"
-                  onClick={disconnectMockNotionWorkspace}
-                  className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground/70 transition-colors hover:bg-muted"
-                >
-                  연결 해제
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/signup/notion")}
-                  className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-foreground/80"
-                >
-                  다시 연결
-                </button>
-              </>
-            ) : (
+            {connection?.notion_connected ? (
               <button
                 type="button"
-                onClick={() => navigate("/signup/notion")}
-                className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-foreground/80"
+                onClick={() => void handleDisconnectNotion()}
+                className="rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground/70 transition-colors hover:bg-muted"
               >
-                Notion 연결하기
+                연결 해제
               </button>
-            )}
+            ) : null}
+            <button
+              type="button"
+              onClick={() => navigate("/signup/notion")}
+              className="rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-foreground/80"
+            >
+              Notion 연결하기
+            </button>
           </div>
         </section>
       </section>
     </main>
   );
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("이미지 데이터를 읽지 못했습니다."));
+    };
+    reader.onerror = () => reject(new Error("이미지 파일을 읽지 못했습니다."));
+    reader.readAsDataURL(file);
+  });
 }

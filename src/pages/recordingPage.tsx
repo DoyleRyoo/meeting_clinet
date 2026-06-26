@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Play, Pause, Square, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
-import {
-  createMockMeetingTranscript,
-  useApp,
-} from "../components/context/context";
+import { useApp } from "../components/context/useApp";
+import { uploadRecording } from "../apis/recordingApi";
 import { formatElapsed, getNowStrings } from "../utils/dateTime";
 import { Waveform } from "../components/recording/waveform";
 import { useSummaryStore } from "../store/summaryStore";
@@ -20,14 +18,16 @@ const supportedAudioMimeTypes = [
 export function RecordingPage() {
   const navigate = useNavigate();
   const { pid } = useParams<{ pid: string }>();
-  const { elapsed, setElapsed, timerRef } = useApp();
+  const { elapsed, setElapsed, timerRef, projects } = useApp();
   const startSummary = useSummaryStore((state) => state.startSummary);
+  const setMeetingContext = useSummaryStore((state) => state.setMeetingContext);
   const [status, setStatus] = useState<RecordingStatus>("ready");
   const [waveformStream, setWaveformStream] = useState<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const { dateString, timeString } = getNowStrings();
+  const currentProject = projects.find((project) => project.id === pid || project.projectId === pid);
 
   useEffect(() => {
     return () => {
@@ -72,10 +72,6 @@ export function RecordingPage() {
       setElapsed(0);
       setStatus("recording");
       startTimer();
-      mediaStreamRef.current = stream;
-      setElapsed(0);
-      setStatus("recording");
-      startTimer();
     } catch (error: unknown) {
       const message = getMicrophoneErrorMessage(error);
       alert(message);
@@ -109,20 +105,22 @@ export function RecordingPage() {
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
-      // const audioBlob = await stopRecording(mediaRecorder, audioChunksRef.current);
-      // const fileName = createRecordingFileName(audioBlob.type);
+      const audioBlob = await stopRecording(mediaRecorder, audioChunksRef.current);
+      const fileName = createRecordingFileName(audioBlob.type);
+      const formData = new FormData();
+      formData.append("file", audioBlob, fileName);
+      formData.append("duration_sec", String(elapsed));
+      if (pid) formData.append("project_id", pid);
 
-      // 테스트 단계에서만 사용하는 코드입니다. 추후 삭제가 필요합니다.
-      // MediaRecorder의 실제 인코딩 형식에 맞춰 브라우저 다운로드를 실행합니다.
-      // downloadRecording(audioBlob, fileName);  // 로컬 다운로드 부분
-
-      // 실제 프로그램에서 사용하는 코드입니다.
-      // 백엔드 녹음 파일 업로드 API 연동 완료 후 주석을 해제하여 사용합니다.
-      // const formData = new FormData();
-      // formData.append("file", audioBlob, fileName);
-      // await recordingApi.uploadRecording(formData);
-
-      startSummary(createMockMeetingTranscript(elapsed));
+      const transcript = await uploadRecording(formData);
+      const meetingId = currentProject?.meetings.at(-1)?.id ?? pid ?? "";
+      setMeetingContext({
+        projectId: pid ?? null,
+        meetingId,
+        projectMemberIds:
+          currentProject?.projectParticipants?.map((participant) => participant.projectMemberId) ?? [],
+      });
+      void startSummary(transcript);
       navigate(`/projects/${pid}/record/summarizing`);
     } catch (error: unknown) {
       const message =
@@ -267,16 +265,6 @@ function createRecordingFileName(mimeType: string): string {
   return `meeting-record-${Date.now()}.${extension}`;
 }
 
-function downloadRecording(audioBlob: Blob, fileName: string): void {
-  const downloadUrl = URL.createObjectURL(audioBlob);
-  const downloadLink = document.createElement("a");
-  downloadLink.href = downloadUrl;
-  downloadLink.download = fileName;
-  document.body.appendChild(downloadLink);
-  downloadLink.click();
-  downloadLink.remove();
-  URL.revokeObjectURL(downloadUrl);
-}
 
 function getMicrophoneErrorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "NotAllowedError") {

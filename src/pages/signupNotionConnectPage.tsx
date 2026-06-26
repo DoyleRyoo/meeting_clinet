@@ -1,45 +1,48 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, ExternalLink, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router";
-import { useApp } from "../components/context/context";
+import {
+  getNotionAuthorization,
+  getNotionConnectionStatus,
+  type NotionConnectionStatusResponse,
+} from "../apis/notionApi";
 
 export function SignupNotionConnectPage() {
   const navigate = useNavigate();
-  const {
-    notionConnected,
-    notionWorkspaceIcon,
-    notionWorkspaceName,
-    notionWorkspaceUrl,
-    connectMockNotionWorkspace,
-  } = useApp();
   const [isConnecting, setIsConnecting] = useState(false);
+  const [connection, setConnection] = useState<NotionConnectionStatusResponse | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const startMockNotionOAuth = async () => {
-    // 실제 백엔드와 연결에 사용되는 코드입니다.
-    // const response = await axios.get("/auth/notion/authorize");
-    // window.location.href = response.data.authorizationUrl;
+  useEffect(() => {
+    let ignore = false;
 
-    // 테스트 코드입니다 추후 삭제되어야합니다
-    // ===== 삭제 시작 =====
-    await new Promise<void>((resolve) => {
-      window.setTimeout(resolve, 700);
-    });
-    connectMockNotionWorkspace();
-    // ===== 삭제 끝 =====
-  };
+    async function loadConnection() {
+      try {
+        const response = await getNotionConnectionStatus();
+        if (ignore) return;
+        setConnection(response);
+        setErrorMessage(null);
+      } catch (error) {
+        if (ignore) return;
+        setErrorMessage(error instanceof Error ? error.message : "Notion 연결 상태를 불러오지 못했습니다.");
+      }
+    }
+
+    void loadConnection();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const handleConnect = async () => {
-    if (isConnecting || notionConnected) return;
+    if (isConnecting || connection?.notion_connected) return;
 
     setIsConnecting(true);
-
     try {
-      await startMockNotionOAuth();
+      const { authorizationUrl } = await getNotionAuthorization();
+      window.location.href = authorizationUrl;
     } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "알 수 없는 오류가 발생했습니다.";
+      const message = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
       alert(`Notion 연결에 실패했습니다. ${message}`);
     } finally {
       setIsConnecting(false);
@@ -50,14 +53,16 @@ export function SignupNotionConnectPage() {
     navigate("/");
   };
 
+  const notionConnected = connection?.notion_connected ?? false;
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <section className="w-full max-w-md rounded-xl border border-border bg-white p-8 shadow-sm">
         <div className="flex flex-col items-center text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border bg-white text-foreground shadow-sm">
-            {notionWorkspaceIcon && notionConnected ? (
+            {connection?.notion_workspace_icon && notionConnected ? (
               <img
-                src={notionWorkspaceIcon}
+                src={connection.notion_workspace_icon}
                 alt=""
                 className="h-6 w-6 rounded object-cover"
               />
@@ -74,25 +79,28 @@ export function SignupNotionConnectPage() {
           </p>
         </div>
 
+        {errorMessage && (
+          <p className="mt-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {errorMessage}
+          </p>
+        )}
+
         {notionConnected && (
           <div className="mt-6 rounded-lg border border-green-100 bg-green-50 p-4">
             <div className="flex items-start gap-3">
-              <CheckCircle2
-                size={20}
-                className="mt-0.5 shrink-0 text-green-600"
-              />
+              <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-green-600" />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-green-800">
                   연결된 워크스페이스
                 </p>
-                {notionWorkspaceName && (
+                {connection?.notion_workspace_name && (
                   <p className="mt-1 truncate text-sm text-green-700">
-                    {notionWorkspaceName}
+                    {connection.notion_workspace_name}
                   </p>
                 )}
-                {notionWorkspaceUrl && (
+                {connection?.notion_workspace_url && (
                   <a
-                    href={notionWorkspaceUrl}
+                    href={connection.notion_workspace_url}
                     target="_blank"
                     rel="noreferrer"
                     className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-green-700 underline-offset-2 hover:underline"
