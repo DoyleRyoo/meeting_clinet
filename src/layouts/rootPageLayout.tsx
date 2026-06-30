@@ -3,6 +3,7 @@ import { ChevronDown, Folder, Plus } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useAuthStore } from "../stores/authStore";
 import { ProfileEditModal } from "../components/auth/profileEditModal";
+import { CompanyManagementModal } from "../components/company/companyManagementModal";
 import { getProjectList, mapProjectListResponse } from "../apis/projectApi";
 import type { ProjectStatus, ProjectView } from "../apis/apiTypes";
 
@@ -26,6 +27,7 @@ export function RootPageLayout() {
   const logout = useAuthStore((state) => state.logout);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
+  const [isCompanyManagementOpen, setIsCompanyManagementOpen] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -55,6 +57,11 @@ export function RootPageLayout() {
   const handleProfileEditOpen = () => {
     setIsProfileMenuOpen(false);
     setIsProfileEditOpen(true);
+  };
+
+  const handleCompanyManagementOpen = () => {
+    setIsProfileMenuOpen(false);
+    setIsCompanyManagementOpen(true);
   };
 
   const getProjectStatusColor = (
@@ -117,6 +124,13 @@ export function RootPageLayout() {
                     className="w-full rounded-md px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                   >
                     프로필
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCompanyManagementOpen}
+                    className="w-full rounded-md px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                  >
+                    회사 관리
                   </button>
                   <button
                     type="button"
@@ -195,6 +209,10 @@ export function RootPageLayout() {
       {isProfileEditOpen && (
         <ProfileEditModal onClose={() => setIsProfileEditOpen(false)} />
       )}
+      <CompanyManagementModal
+        isOpen={isCompanyManagementOpen}
+        onClose={() => setIsCompanyManagementOpen(false)}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { apiClient } from "./authApi";
-import type { CompanyDto } from "./apiTypes";
+import type { CompanyDto, CompanyRelationsResponseDto } from "./apiTypes";
 
 export interface CompanyRegistRequest {
   company_name: string;
@@ -24,7 +24,7 @@ export async function updateCompany<TResponse = CompanyDto>(
   return response.data;
 }
 
-export async function getCompany<TResponse = CompanyDto>(): Promise<TResponse> {
+export async function getCompany<TResponse = CompanyRelationsResponseDto>(): Promise<TResponse> {
   const response = await apiClient.get<TResponse>("/company");
   return response.data;
 }

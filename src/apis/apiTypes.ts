@@ -122,10 +122,14 @@ export interface NotionDto {
   company_id: string | number;
 }
 
+export interface CompanyNotionUrlListItemDto extends NotionDto {
+  project_name?: string | null;
+}
+
 export interface CompanyRelationsResponseDto extends CompanyDto {
   users?: UserDto[];
   projects?: ProjectDto[];
-  notionList?: NotionDto[];
+  notionList?: CompanyNotionUrlListItemDto[];
 }
 
 export interface UserDetailResponseDto extends UserDto {
